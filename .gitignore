@@ -1,0 +1,6 @@
+# Compilation results
+*.LST
+*.OBJ
+*.MAP
+*.COM
+
