@@ -62,6 +62,8 @@ Start:		LoadVideoES
 
             	mov AX, 0a10h
             	mov DX, 0a28h
+		mov CX, 0c0ch
+		mov DI, offset set1
 
             	call FramePrt
 
@@ -111,7 +113,8 @@ __MdlPrt:	mov es:[bx], DH
 ;----------------------------------------
 ; Draws beautiful frame
 ;----------------------------------------
-; Entry:	AH = Y, AL = X, DH = Height, DL = Width
+; Entry:	AH = Y, AL = X, DH = Height, DL = Width,
+;		DI = pattern address, CH = Frame Color, CL = Font color
 ; Exit:		None
 ; Assumes:	ES = VIDMEM
 ; Destr: 	AX, BX, CX, DX, SI
@@ -119,6 +122,8 @@ __MdlPrt:	mov es:[bx], DH
 
 FramePrt	proc
 		
+		push cx
+
         	xor bx, bx
 
 		; bx = (ah * 80d + al) * 2d
@@ -137,23 +142,24 @@ FramePrt	proc
 		mov si, dx
 		and si, 00ffh
 
+		pop cx
 		push dx
 
-		mov dl, 4eh
+		mov dl, ch 	; Set color
 
 		; draw upper row of the frame
 		mov cx, si
-		mov ah, symbols[4]
-		mov al, symbols[5]
-		mov dh, symbols[0]
+		mov ah, di[4]
+		mov al, di[5]
+		mov dh, di[0]
 
 		call RowPrt
 
 		add bx, 80d * 2d
 
 		; draw middle rows of the frame
-		mov ah, symbols[2]
-		mov al, symbols[3]
+		mov ah, di[2]
+		mov al, di[3]
 		mov dh, 20h
 
 		; outer loop as frame height
@@ -175,11 +181,11 @@ __PrtRow:	push cx
 
 		; draw lower row of the frame
 		mov cx, si
-		mov ah, symbols[6]
-		mov al, symbols[7]
-		mov dh, symbols[1]
+		mov ah, di[6]
+		mov al, di[7]
+		mov dh, di[1]
 
-		call RowPrt 
+		call RowPrt
 
 		ret
 		endp
@@ -188,6 +194,7 @@ __PrtRow:	push cx
 
 .data
 
-symbols db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
+set1 db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
+set2 db 03h, 03h, 03h, 03h, 03h, 03h, 03h, 03h
 
 end		Start
