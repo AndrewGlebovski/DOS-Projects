@@ -69,6 +69,46 @@ Start:		LoadVideoES
 
 
 ;----------------------------------------
+; Draws frame row in specific pattern
+;----------------------------------------
+; Entry:	AH = frst chr, AL = lst chr, BX = vidmem offset, 
+;		DH = mdl chr, DL = attr, CX = size
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	CX
+;----------------------------------------
+
+RowPrt		proc
+
+		push bx		; Save start pointer
+
+		; Draw first character
+		mov es:[bx], AH
+		mov es:[bx+1], DL
+		
+		add BX, 2d
+		sub CX, 2d
+
+		; Draw middle characters
+__MdlPrt:	mov es:[bx], DH
+		mov es:[bx+1], DL
+
+		add BX, 2d
+
+		loop __MdlPrt
+
+		; Draw last character
+		mov es:[bx], AL
+		mov es:[bx+1], DL
+
+		pop BX		; Return to start value
+
+		ret
+		endp
+
+;----------------------------------------
+
+;----------------------------------------
 ; Draws beautiful frame
 ;----------------------------------------
 ; Entry:	AH = Y, AL = X, DH = Height, DL = Width
@@ -81,82 +121,65 @@ FramePrt	proc
 		
         	xor bx, bx
 
+		; bx = (ah * 80d + al) * 2d
 		push ax
 		shr ax, 8
 		mov bl, 80d
 		mul bl
 		mov bx, ax
 		pop ax
-		
 		xor cx, cx
 		mov cl, al
         	add bx, cx
-        	
-		shl bx, 1
-
-        	xor si, si
-
-		xor cx, cx
-        	mov cl, dh
-
-__ClrCol:	push cx
-        	push bx                
+		shl bx, 1              
     
-		xor cx, cx
-        	mov cl, dl
+		; si = width
+		mov si, dx
+		and si, 00ffh
 
-__ClrRow:	mov byte ptr es:[si + bx], 20h
-        
-        	add bx, 2 
+		push dx
 
-        	loop __ClrRow
+		mov dl, 4eh
 
-        	add si, 80d * 2d
-        
-        	pop bx
-        	pop cx 
+		; draw upper row of the frame
+		mov cx, si
+		mov ah, symbols[4]
+		mov al, symbols[5]
+		mov dh, symbols[0]
 
-        	loop __ClrCol
+		call RowPrt
 
-		push bx
-		mov cl, dl 
+		add bx, 80d * 2d
 
-		mov ah, symbols[0]
-		mov al, symbols[1]
+		; draw middle rows of the frame
+		mov ah, symbols[2]
+		mov al, symbols[3]
+		mov dh, 20h
 
-__PrtRow:	mov byte ptr es:[bx], ah
-		mov byte ptr es:[si + bx], al
-		
-		add bx, 2
+		; outer loop as frame height
+		pop cx
+		shr cx, 8
+		sub cx, 2d
+
+__PrtRow:	push cx
+
+		; inner procedure loop param
+		mov cx, si
+
+		call RowPrt
+
+		pop cx
+		add bx, 80d * 2d
 
 		loop __PrtRow
 
-		pop si
+		; draw lower row of the frame
+		mov cx, si
+		mov ah, symbols[6]
+		mov al, symbols[7]
+		mov dh, symbols[1]
 
-		mov cl, dh
-
-		mov dh, symbols[4]
-		mov dl, symbols[5]
-
-		mov es:[bx], dl
-		mov es:[si], dh
-
-		mov ah, symbols[2]
-		mov al, symbols[3]
-
-__PrtCol:	add si, 80d * 2d
-		add bx, 80d * 2d
-
-		mov byte ptr es:[si], ah
-		mov byte ptr es:[bx], al
-
-		loop __PrtCol
-
-		mov dh, symbols[6]
-		mov dl, symbols[7]
-
-		mov es:[si], dh
-		mov es:[bx], dl 
+		call RowPrt 
 
 		ret
 		endp
