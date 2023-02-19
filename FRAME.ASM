@@ -13,6 +13,7 @@ _MACROS_ equ nop	; Signals about macros begin and end in byte code
 
 VIDMEM equ 0b800h	; Video memory address segment
 
+SET_CNT equ 2
 
 ;----------------------------------------
 ; Loads ES with video segment address
@@ -58,9 +59,9 @@ Exit		macro code
 ;----------------------------------------
 
 
+; cmd format = <x> <y> <w> <h> <stl-id> [usr-stl] [frame-clr] [font-clr] <msg>
+
 Start:		LoadVideoES
-		
-		; Cmd args = <x> <y> <width> <height> <style-id>
 
 		mov si, 82h
 
@@ -75,13 +76,42 @@ Start:		LoadVideoES
 
 		call ReadInt
 		mov dh, al
-		
-		mov ax, bx 
-            	;mov dx, 0a28h
-		mov cx, 0c0ch
-		mov di, offset set1
 
-            	call FramePrt
+		push bx
+		push dx
+
+		mov al, cs:[si]
+		sub al, '0'
+		add si, 2d
+
+		cmp al, SET_CNT
+		jb Predef
+
+		mov di, offset si	; WORKS ONLY CAUSE PSP AND DATA
+		add si, 9		; ARE IN THE SAME SEGMENT
+
+		call ReadInt
+		mov dh, al
+		
+		call ReadInt
+		mov dl, al
+
+		mov cx, dx
+
+		jmp Prt
+
+Predef:	 	mov cx, 0c0ch
+
+		xor bx, bx
+		mov bl, al
+		shl bx, 3
+
+		lea di, set0[bx]
+
+Prt:           	pop dx
+		pop ax
+
+		call FramePrt
 
 		Exit 0
 
@@ -119,7 +149,7 @@ __MdlPrt:	mov es:[bx], DH
 		mov es:[bx], AL
 		mov es:[bx+1], DL
 
-		pop BX		; Return to start value
+		pop BX		; Restore BX pointer
 
 		ret
 		endp
@@ -238,7 +268,7 @@ __Skip:		ret
 
 .data
 
-set1 db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
-set2 db 03h, 03h, 03h, 03h, 03h, 03h, 03h, 03h
+set0 db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
+set1 db 8 dup(03h)
 
 end		Start
