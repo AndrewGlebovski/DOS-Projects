@@ -85,7 +85,7 @@ Start:		LoadVideoES
 		add si, 2d
 
 		cmp al, SET_CNT
-		jb Predef
+		jb Predef		; user choose to set custom symbols
 
 		mov di, offset si	; WORKS ONLY CAUSE PSP AND DATA
 		add si, 9		; ARE IN THE SAME SEGMENT
@@ -100,7 +100,7 @@ Start:		LoadVideoES
 
 		jmp Prt
 
-Predef:	 	mov cx, 0c0ch
+Predef:	 	mov cx, 0c0ch	; user choose predefined set of symbols
 
 		xor bx, bx
 		mov bl, al
@@ -111,7 +111,29 @@ Predef:	 	mov cx, 0c0ch
 Prt:           	pop dx
 		pop ax
 
+		call CalcBX
+
+		push si		; Save some params for message output
+		push bx
+		push cx
+
 		call FramePrt
+
+		; print string time
+
+		pop cx
+		pop di
+		pop si
+		
+		add di, 163d * 2d	; Skip two lines and two symbols
+		mov al, cl
+
+		xor cx, cx		; Calculates message length
+		mov cl, cs:[80h]
+		add cx, 81h
+		sub cx, offset si		
+
+		call PrtStr
 
 		Exit 0
 
@@ -159,26 +181,14 @@ __MdlPrt:	mov es:[bx], DH
 ;----------------------------------------
 ; Draws beautiful frame
 ;----------------------------------------
-; Entry:	AH = Y, AL = X, DH = Height, DL = Width,
-;		DI = pattern address, CH = Frame Color, CL = Font color
+; Entry:	BX = vidmem address, DH = Height, DL = Width,
+;		DI = pattern address, CH = Frame Color
 ; Exit:		None
 ; Assumes:	ES = VIDMEM
 ; Destr: 	AX, BX, CX, DX, SI
 ;----------------------------------------
 
-FramePrt	proc
-
-        	xor bx, bx
-
-		; bx = (ah * 80d + al) * 2d
-		push ax
-		shr ax, 8
-		mov bl, 80d
-		mul bl
-		mov bx, ax
-		pop ax
-        	adc bl, al
-		shl bx, 1              
+FramePrt	proc           
     
 		; si = width
 		mov si, dx
@@ -262,6 +272,73 @@ __Next:		mov CL, CS:[SI]
 		jmp __Next
 
 __Skip:		ret
+		endp
+
+;------------------------------------------
+
+;------------------------------------------
+; Prints string to screen
+;------------------------------------------
+; Entry:	SI = str address, DI = vidmem address, CX = size, AL = color
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	AX, CX, SI, DI
+;------------------------------------------
+
+PrtStr		proc
+
+		push DI
+
+__Next:		mov ah, cs:[si]
+		inc si
+
+		cmp ah, '\'
+		je __NewLine
+
+		mov es:[di], ah		; Draw actual symbol
+		mov es:[di+1], al
+		
+		add di, 2d
+		loop __Next
+
+		jmp __Finish 
+
+__NewLine:	pop di			; '\' symbol is not printed
+		add di, 80d * 2d
+		push di			; Save value to restore it next time
+
+		loop __Next
+
+__Finish:	pop DI
+
+		ret
+		endp
+
+;------------------------------------------
+
+;------------------------------------------
+; Calculates vidmem address by x and y
+;------------------------------------------
+; Entry: 	AH = y, AL = x
+; Exit:		BX
+; Destr:	BX
+;------------------------------------------
+
+CalcBX		proc
+		
+		xor bx, bx
+
+		; bx = (ah * 80d + al) * 2d
+		push ax
+		shr ax, 8
+		mov bl, 80d
+		mul bl
+		mov bx, ax
+		pop ax
+        	adc bl, al
+		shl bx, 1   
+
+		ret
 		endp
 
 ;------------------------------------------
