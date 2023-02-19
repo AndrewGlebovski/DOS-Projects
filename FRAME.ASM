@@ -59,11 +59,27 @@ Exit		macro code
 
 
 Start:		LoadVideoES
+		
+		; Cmd args = <x> <y> <width> <height> <style-id>
 
-            	mov AX, 0a10h
-            	mov DX, 0a28h
-		mov CX, 0c0ch
-		mov DI, offset set1
+		mov si, 82h
+
+		call ReadInt
+		mov bl, al
+
+		call ReadInt
+		mov bh, al
+
+		call ReadInt
+		mov dl, al
+
+		call ReadInt
+		mov dh, al
+		
+		mov ax, bx 
+            	;mov dx, 0a28h
+		mov cx, 0c0ch
+		mov di, offset set1
 
             	call FramePrt
 
@@ -121,8 +137,6 @@ __MdlPrt:	mov es:[bx], DH
 ;----------------------------------------
 
 FramePrt	proc
-		
-		push cx
 
         	xor bx, bx
 
@@ -133,16 +147,13 @@ FramePrt	proc
 		mul bl
 		mov bx, ax
 		pop ax
-		xor cx, cx
-		mov cl, al
-        	add bx, cx
+        	adc bl, al
 		shl bx, 1              
     
 		; si = width
 		mov si, dx
 		and si, 00ffh
 
-		pop cx
 		push dx
 
 		mov dl, ch 	; Set color
@@ -191,6 +202,39 @@ __PrtRow:	push cx
 		endp
 
 ;-----------------------------------------
+
+;-----------------------------------------
+; Reads number from cmd args
+;-----------------------------------------
+; Entry:	SI = String address
+; Exit:		AX
+; Destr:	AX, CX, SI
+;-----------------------------------------
+
+ReadInt		proc
+
+		mov CH, 10d
+		xor AX, AX
+
+__Next:		mov CL, CS:[SI]
+		inc SI
+
+		cmp CL, '0'
+		jb __Skip
+
+		cmp CL, '9' 
+		ja __Skip		
+
+		sub CL, '0'
+		mul CH
+		adc AL, CL
+
+		jmp __Next
+
+__Skip:		ret
+		endp
+
+;------------------------------------------
 
 .data
 
