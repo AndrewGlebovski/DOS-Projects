@@ -17,6 +17,11 @@ X equ 65		; X coordinate of top left corner
 Y equ 2			; Y coordinate of top left corner
 SCR_WIDTH equ 80	; Screen width
 
+REG_COUNT equ 6		; Amount of registers to print
+
+FRAME_COLOR equ 0ch	; Frame color
+FONT_COLOR equ 0ch	; Text color
+
 ;----------------------------------------
 ; Loads ES with video segment address
 ;----------------------------------------
@@ -118,13 +123,21 @@ __CallNewInt:	in al, 61h
 
         	SetVIDMEM
 
-		; Set vidmem and reg_names start address
+		; Print frame
+		mov bx, (SCR_WIDTH * (Y - 1) + X - 1) * 2
+		mov dl, 7 + 1 * 2
+		mov dh, REG_COUNT + 2
+		mov ch, FRAME_COLOR
+		mov di, offset pattern
+		call FramePrt
+
+		; Set some addresses
         	mov bx, (SCR_WIDTH * Y + X) * 2
             	mov si, offset reg_names
 
 		_MACROS_
 
-		rept 6		; Print for registers from stack
+		rept REG_COUNT	; Print for registers from stack
 
             	call PrtStr	; Print register name
 
@@ -150,6 +163,7 @@ __Finish:	iret
 
 ;-----------------------------------------
 
+reg_names   	db "ax bx cx dx si di "
 
 ;-----------------------------------------
 ; Prints heximal representation
@@ -172,7 +186,7 @@ __Next:		dec cl
 
 		mov ch, cs:hex_code[di]
 		mov es:[bx], ch
-		mov byte ptr es:[bx+1], 4eh
+		mov byte ptr es:[bx+1], FONT_COLOR
 
 		add bx, 2
 		
@@ -200,7 +214,7 @@ PrtStr		proc
 
 __Next:		mov cl, cs:[si]
 		mov es:[bx], cl
-		mov byte ptr es:[bx+1], 4eh
+		mov byte ptr es:[bx+1], FONT_COLOR
 		
 		add bx, 2
         	inc si
@@ -215,7 +229,113 @@ __Next:		mov cl, cs:[si]
 
 
 hex_code 	db "0123456789ABCDEF"
-reg_names   	db "ax bx cx dx si di "
+
+;----------------------------------------
+; Draws frame row in specific pattern
+;----------------------------------------
+; Entry:	AH = frst chr, AL = lst chr, BX = vidmem offset, 
+;		DH = mdl chr, DL = attr, CX = size
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	CX
+;----------------------------------------
+
+RowPrt		proc
+
+		push bx		; Save start pointer
+
+		; Draw first character
+		mov es:[bx], AH
+		mov es:[bx+1], DL
+		
+		add BX, 2d
+		sub CX, 2d
+
+		; Draw middle characters
+__MdlPrt:	mov es:[bx], DH
+		mov es:[bx+1], DL
+
+		add BX, 2d
+
+		loop __MdlPrt
+
+		; Draw last character
+		mov es:[bx], AL
+		mov es:[bx+1], DL
+
+		pop BX		; Restore BX pointer
+
+		ret
+		endp
+
+;----------------------------------------
+
+;----------------------------------------
+; Draws beautiful frame
+;----------------------------------------
+; Entry:	BX = vidmem address, DH = Height, DL = Width,
+;		DI = pattern address, CH = Frame Color
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr: 	AX, BX, CX, DX, SI
+;----------------------------------------
+
+FramePrt	proc           
+    
+		; si = width
+		mov si, dx
+		and si, 00ffh
+
+		push dx
+
+		mov dl, ch 	; Set color
+
+		; draw upper row of the frame
+		mov cx, si
+		mov ah, cs:di[4]
+		mov al, cs:di[5]
+		mov dh, cs:di[0]
+
+		call RowPrt
+
+		add bx, 80d * 2d
+
+		; draw middle rows of the frame
+		mov ah, cs:di[2]
+		mov al, cs:di[3]
+		mov dh, 20h
+
+		; outer loop as frame height
+		pop cx
+		shr cx, 8
+		sub cx, 2d
+
+__PrtRow:	push cx
+
+		; inner procedure loop param
+		mov cx, si
+
+		call RowPrt
+
+		pop cx
+		add bx, 80d * 2d
+
+		loop __PrtRow
+
+		; draw lower row of the frame
+		mov cx, si
+		mov ah, cs:di[6]
+		mov al, cs:di[7]
+		mov dh, cs:di[1]
+
+		call RowPrt
+
+		ret
+		endp
+
+;-----------------------------------------
+
+pattern 	db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
 
 EOP:
 
