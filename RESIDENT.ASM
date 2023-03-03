@@ -46,13 +46,24 @@ SetVIDMEM	macro
 
 Start:  	xor bx, bx
         	mov es, bx
-        	mov bx, 9 * 4
+        	mov bx, 8 * 4
 
         	cli     ; disable int handle
 
-        	; set int and save previous
-        
+        	; set int8 and save previous
             	mov ax, es:[bx]
+        	mov OldInt8ofs, ax
+        	mov es:[bx], offset NewInt8
+
+            	mov ax, es:[bx+2]
+        	mov OldInt8seg, ax
+        	mov ax, cs
+        	mov es:[bx+2], ax
+
+		add bx, 4
+
+		; set int9 and save previous
+		mov ax, es:[bx]
         	mov OldInt9ofs, ax
         	mov es:[bx], offset NewInt9
 
@@ -64,7 +75,6 @@ Start:  	xor bx, bx
         	sti      ; enable int handle
 
         	; make program residential
-
         	mov ax, 3100h
         	mov dx, offset EOP
  		shr dx, 4
@@ -73,7 +83,7 @@ Start:  	xor bx, bx
         
 
 ;-----------------------------------------
-; Addition to int09 that prints AX to screen
+; Keyboard interrupt that enables/disables registers print if '~' pressed
 ;-----------------------------------------
 ; Entry:	None
 ; Exit:		None
@@ -111,11 +121,42 @@ __CallNewInt:	in al, 61h
 		mov al, 20h
 		out 20h, al
 
+		; Change print_reg to opposite value
+		not cs:[print_reg]
+		
 		; Restore AX
 		pop ax
 
+__Finish:	iret
+		endp
+
+;-----------------------------------------
+
+print_reg	db 0ffh
+
+;-----------------------------------------
+; Timer interrupt that prints all register if 'print_reg' is FF
+;-----------------------------------------
+; Entry:	None
+; Exit:		None
+; Destr:	None
+;-----------------------------------------
+
+NewInt8		proc
+
+		cmp cs:[print_reg], 0ffh
+		je __CallNewInt
+
+		; Far jump to previous int
+__CallOldInt:	db 0eah
+
+		OldInt8ofs 	dw 0
+		OldInt8seg 	dw 0
+
+		iret
+
 		; Save stack start before pushing
-		push bp
+__CallNewInt:	push bp
 		mov bp, sp
 
 		; Save registers
@@ -158,7 +199,9 @@ __CallNewInt:	in al, 61h
 		; Restore bp
 		pop bp
 
-__Finish:	iret
+		; Jmp to previous int handler and return
+		jmp __CallOldInt
+
 		endp
 
 ;-----------------------------------------
