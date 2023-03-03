@@ -77,9 +77,13 @@ NewInt9		proc
 		push ax bx cx si es
 
         	SetVIDMEM
-        	mov bx, 160 * 1 + 71 * 2
 
-        	call HexPrint
+        	mov bx, 160 * 1 + 68 * 2
+            	mov si, offset reg_names
+
+            	call PrtStr
+
+            	call HexPrint
 
 		pop es si cx bx ax
 
@@ -95,6 +99,7 @@ OldInt9seg 	dw 0
 
 ;-----------------------------------------
 
+
 ;-----------------------------------------
 ; Prints heximal representation
 ;-----------------------------------------
@@ -106,19 +111,20 @@ OldInt9seg 	dw 0
 
 HexPrint	proc
 
-		mov cl, 4d
+		mov cl, 4
 
-__Next:		mov si, ax
-		and si, 000fh
-		
+__Next:		dec cl
+
+		mov si, ax
+		shr si, cl
+		and si, 0fh		
+
 		mov ch, cs:hex_code[si]
 		mov es:[bx], ch
 		mov byte ptr es:[bx+1], 4eh
 
-		sub bx, 2
-		shr ax, 4
+		add bx, 2
 		
-		dec cl
 		cmp cl, 0
 		jne __Next
 
@@ -127,7 +133,38 @@ __Next:		mov si, ax
 
 ;-----------------------------------------
 
+
+;------------------------------------------
+; Prints string to screen
+;------------------------------------------
+; Entry:	SI = str address, BX = vidmem address
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	CX, SI, BX
+;------------------------------------------
+
+PrtStr		proc
+
+            	mov ch, 03
+
+__Next:		mov cl, cs:[si]
+		mov es:[bx], cl
+		mov byte ptr es:[bx+1], 4eh
+		
+		add bx, 2
+        	inc si
+        	dec ch
+        	cmp ch, 0
+		jne __Next
+
+		ret
+		endp
+
+;------------------------------------------
+
+
 hex_code 	db "0123456789ABCDEF"
+reg_names   	db "ax "
 
 EOP:
 
