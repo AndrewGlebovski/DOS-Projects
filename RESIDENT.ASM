@@ -15,12 +15,15 @@ VIDMEM equ 0b800h	; Video memory address segment
 
 X equ 65		; X coordinate of top left corner
 Y equ 2			; Y coordinate of top left corner
-SCR_WIDTH equ 80	; Screen width
+SCREEN_W equ 80		; Screen width
 
-REG_COUNT equ 6		; Amount of registers to print
+REG_CNT equ 6		; Amount of registers to print
 
 FRAME_COLOR equ 0ch	; Frame color
 FONT_COLOR equ 0ch	; Text color
+
+FRAME_W equ 9		; Frame width
+FRAME_H equ REG_CNT + 2	; Frame height
 
 ;----------------------------------------
 ; Loads ES with video segment address
@@ -121,21 +124,115 @@ __CallNewInt:	in al, 61h
 		mov al, 20h
 		out 20h, al
 
-		; Change print_reg to opposite value
-		not cs:[print_reg]
-		
+		; Change RegPrtOn to opposite value
+		not cs:[RegPrtOn]
+
+		; Check if print disables
+		cmp cs:[RegPrtOn], 0
+		jne __Skip
+
+		; Save registers
+		push cx si di es
+
+		; Restore vidmem on disabling
+		SetVIDMEM
+		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		mov di, offset SaveBuf
+		call LoadVidMem
+
+		; Restore registers
+		pop es di si cx
+
 		; Restore AX
-		pop ax
+__Skip:		pop ax
 
 __Finish:	iret
 		endp
 
 ;-----------------------------------------
 
-print_reg	db 0ffh
 
 ;-----------------------------------------
-; Timer interrupt that prints all register if 'print_reg' is FF
+; Checks differences between VidMem and DrawBuf and write them in SaveBuf
+;-----------------------------------------
+; Entry:	SI = vidmem offset
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	AX, CX, SI, DI
+;-----------------------------------------
+
+SaveBufUpdate	proc
+
+		xor di, di
+		mov ch, FRAME_H
+		mov cl, FRAME_W * 2
+
+__Next:		mov ah, es:[si]
+
+		cmp cs:DrawBuf[di], ah
+		je __Skip
+
+		mov cs:SaveBuf[di], ah
+
+__Skip:		inc si
+		inc di
+
+		dec cl
+		cmp cl, 0
+		jne __Next
+
+		add si, (SCREEN_W - FRAME_W) * 2
+		mov cl, FRAME_W * 2
+
+		dec ch
+		cmp ch, 0
+		jne __Next
+
+		ret
+		endp
+
+;-----------------------------------------
+
+
+;-----------------------------------------
+; Copies buffer to video memory
+;-----------------------------------------
+; Entry:	SI = vidmem offset, DI = buffer address
+; Exit:		None
+; Assumes:	ES = VIDMEM
+; Destr:	AX, CX, SI, DI
+;-----------------------------------------
+
+LoadVidMem	proc
+
+		mov ch, FRAME_H
+		mov cl, FRAME_W * 2
+
+__Next:		mov ah, cs:[di]
+		mov es:[si], ah
+
+		inc si
+		inc di
+
+		dec cl
+		cmp cl, 0
+		jne __Next
+
+		add si, (SCREEN_W - FRAME_W) * 2
+		mov cl, FRAME_W * 2
+
+		dec ch
+		cmp ch, 0
+		jne __Next
+
+		ret
+		endp
+
+;-----------------------------------------
+
+
+;-----------------------------------------
+; Timer interrupt that prints all register if 'RegPrtOn' is FF
 ;-----------------------------------------
 ; Entry:	None
 ; Exit:		None
@@ -144,7 +241,7 @@ print_reg	db 0ffh
 
 NewInt8		proc
 
-		cmp cs:[print_reg], 0ffh
+		cmp cs:[RegPrtOn], 0ffh
 		je __CallNewInt
 
 		; Far jump to previous int
@@ -162,23 +259,30 @@ __CallNewInt:	push bp
 		; Save registers
 		push ax bx cx dx si di es
 
-        	SetVIDMEM
+		; Save buffer update
+		SetVIDMEM
+		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		call SaveBufUpdate
 
-		; Print frame
-		mov bx, (SCR_WIDTH * (Y - 1) + X - 1) * 2
-		mov dl, 7 + 1 * 2
-		mov dh, REG_COUNT + 2
+		; Switch from vidmem to code segment 
+		mov ax, cs
+		mov es, ax
+
+		; Print frame to draw buffer
+		mov bx, offset DrawBuf
+		mov dl, FRAME_W
+		mov dh, FRAME_H
 		mov ch, FRAME_COLOR
-		mov di, offset pattern
+		mov di, offset FrameStyle
 		call FramePrt
 
 		; Set some addresses
-        	mov bx, (SCR_WIDTH * Y + X) * 2
-            	mov si, offset reg_names
+        	mov bx, (offset DrawBuf) + (FRAME_W + 1) * 2
+            	mov si, offset RegNames
 
 		_MACROS_
 
-		rept REG_COUNT	; Print for registers from stack
+		rept REG_CNT	; Repeat for REG_CNT registers stored in stack
 
             	call PrtStr	; Print register name
 
@@ -187,11 +291,17 @@ __CallNewInt:	push bp
             	call HexPrint	; Print register value
 
 		add bp, 2			; Get next element in stack
-		add bx, (SCR_WIDTH - 7) * 2	; To new line
+		add bx, (FRAME_W - 7) * 2	; To new line
 
 		endm
 
 		_MACROS_
+
+		; Copy draw buffer to vidmem
+		SetVIDMEM
+		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		mov di, offset DrawBuf
+		call LoadVidMem
 
 		; Restore registers
 		pop es di si dx cx bx ax
@@ -206,7 +316,6 @@ __CallNewInt:	push bp
 
 ;-----------------------------------------
 
-reg_names   	db "ax bx cx dx si di "
 
 ;-----------------------------------------
 ; Prints heximal representation
@@ -227,7 +336,7 @@ __Next:		dec cl
 		shr di, cl
 		and di, 0fh		
 
-		mov ch, cs:hex_code[di]
+		mov ch, cs:HexCode[di]
 		mov es:[bx], ch
 		mov byte ptr es:[bx+1], FONT_COLOR
 
@@ -271,8 +380,6 @@ __Next:		mov cl, cs:[si]
 ;------------------------------------------
 
 
-hex_code 	db "0123456789ABCDEF"
-
 ;----------------------------------------
 ; Draws frame row in specific pattern
 ;----------------------------------------
@@ -288,42 +395,43 @@ RowPrt		proc
 		push bx		; Save start pointer
 
 		; Draw first character
-		mov es:[bx], AH
-		mov es:[bx+1], DL
+		mov es:[bx], ah
+		mov es:[bx+1], dl
 		
-		add BX, 2d
-		sub CX, 2d
+		add bx, 2
+		sub cx, 2
 
 		; Draw middle characters
-__MdlPrt:	mov es:[bx], DH
-		mov es:[bx+1], DL
+__MdlPrt:	mov es:[bx], dh
+		mov es:[bx+1], dl
 
-		add BX, 2d
+		add bx, 2
 
 		loop __MdlPrt
 
 		; Draw last character
-		mov es:[bx], AL
-		mov es:[bx+1], DL
+		mov es:[bx], al
+		mov es:[bx+1], dl
 
-		pop BX		; Restore BX pointer
+		pop bx		; Restore BX pointer
 
 		ret
 		endp
 
 ;----------------------------------------
 
+
 ;----------------------------------------
 ; Draws beautiful frame
 ;----------------------------------------
 ; Entry:	BX = vidmem address, DH = Height, DL = Width,
-;		DI = pattern address, CH = Frame Color
+;		DI = style address, CH = Frame Color
 ; Exit:		None
 ; Assumes:	ES = VIDMEM
 ; Destr: 	AX, BX, CX, DX, SI
 ;----------------------------------------
 
-FramePrt	proc           
+FramePrt	proc          
     
 		; si = width
 		mov si, dx
@@ -341,7 +449,7 @@ FramePrt	proc
 
 		call RowPrt
 
-		add bx, 80d * 2d
+		add bx, FRAME_W * 2
 
 		; draw middle rows of the frame
 		mov ah, cs:di[2]
@@ -351,7 +459,7 @@ FramePrt	proc
 		; outer loop as frame height
 		pop cx
 		shr cx, 8
-		sub cx, 2d
+		sub cx, 2
 
 __PrtRow:	push cx
 
@@ -361,7 +469,7 @@ __PrtRow:	push cx
 		call RowPrt
 
 		pop cx
-		add bx, 80d * 2d
+		add bx, FRAME_W * 2
 
 		loop __PrtRow
 
@@ -378,7 +486,17 @@ __PrtRow:	push cx
 
 ;-----------------------------------------
 
-pattern 	db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
+
+RegPrtOn	db 0ffh
+
+DrawBuf		db FRAME_W * FRAME_H * 2 dup(0)
+SaveBuf		db FRAME_W * FRAME_H * 2 dup(0)
+
+RegNames   	db "ax bx cx dx si di "
+
+HexCode 	db "0123456789ABCDEF"
+
+FrameStyle 	db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
 
 EOP:
 
