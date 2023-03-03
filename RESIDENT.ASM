@@ -74,27 +74,54 @@ Start:  	xor bx, bx
 
 NewInt9		proc
 
-		push ax bx cx si es
+		; Save AX
+		push ax
+
+		; Read scancode from PPI
+		in al, 60h
+		cmp al, 29h
+		jne __CallOldInt
+
+		; Confirmation for PPI
+		in al, 61h
+		or al, 80h
+		out 61h, al
+		and al, not 80h
+		out 61h, al
+
+		; Confirmation for INTC
+		mov al, 20h
+		out 20h, al
+
+		; Restore AX
+		pop ax
+
+		; Save other registers
+		push bx cx si es
 
         	SetVIDMEM
 
         	mov bx, 160 * 1 + 68 * 2
             	mov si, offset reg_names
 
-            	call PrtStr
+            	call PrtStr	; Print register name
 
-            	call HexPrint
+            	call HexPrint	; Print register value
 
-		pop es si cx bx ax
+		; Restore other registers
+		pop es si cx bx
+
+		jmp __Finish
 
 		; Jump to previous int
+__CallOldInt:	pop ax
 
-        	db 0eah
+		db 0eah
 
 OldInt9ofs 	dw 0
 OldInt9seg 	dw 0
 
-		iret
+__Finish:	iret
 		endp
 
 ;-----------------------------------------
@@ -106,7 +133,7 @@ OldInt9seg 	dw 0
 ; Entry:	AX = Number to print, BX = vidmem offset
 ; Exit:		None
 ; Assumes:	ES = VIDMEM
-; Destr:	AX, BX, CX, SI
+; Destr:	BX, CX, SI
 ;-----------------------------------------
 
 HexPrint	proc
