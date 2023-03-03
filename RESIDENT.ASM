@@ -13,6 +13,9 @@ _MACROS_ equ nop	; Signals about macros begin and end in byte code
 
 VIDMEM equ 0b800h	; Video memory address segment
 
+X equ 65		; X coordinate of top left corner
+Y equ 2			; Y coordinate of top left corner
+SCR_WIDTH equ 80	; Screen width
 
 ;----------------------------------------
 ; Loads ES with video segment address
@@ -80,10 +83,20 @@ NewInt9		proc
 		; Read scancode from PPI
 		in al, 60h
 		cmp al, 29h
-		jne __CallOldInt
+		je __CallNewInt
+
+		; Jump to previous int
+		pop ax
+
+		db 0eah
+
+OldInt9ofs 	dw 0
+OldInt9seg 	dw 0
+
+        	jmp __Finish
 
 		; Confirmation for PPI
-		in al, 61h
+__CallNewInt:	in al, 61h
 		or al, 80h
 		out 61h, al
 		and al, not 80h
@@ -96,30 +109,41 @@ NewInt9		proc
 		; Restore AX
 		pop ax
 
-		; Save other registers
-		push bx cx si es
+		; Save stack start before pushing
+		push bp
+		mov bp, sp
+
+		; Save registers
+		push ax bx cx dx si di es
 
         	SetVIDMEM
 
-        	mov bx, 160 * 1 + 68 * 2
+		; Set vidmem and reg_names start address
+        	mov bx, (SCR_WIDTH * Y + X) * 2
             	mov si, offset reg_names
+
+		_MACROS_
+
+		rept 6		; Print for registers from stack
 
             	call PrtStr	; Print register name
 
+		mov ax, [bp]
+
             	call HexPrint	; Print register value
 
-		; Restore other registers
-		pop es si cx bx
+		add bp, 2			; Get next element in stack
+		add bx, (SCR_WIDTH - 7) * 2	; To new line
 
-		jmp __Finish
+		endm
 
-		; Jump to previous int
-__CallOldInt:	pop ax
+		_MACROS_
 
-		db 0eah
+		; Restore registers
+		pop es di si dx cx bx ax
 
-OldInt9ofs 	dw 0
-OldInt9seg 	dw 0
+		; Restore bp
+		pop bp
 
 __Finish:	iret
 		endp
@@ -133,7 +157,7 @@ __Finish:	iret
 ; Entry:	AX = Number to print, BX = vidmem offset
 ; Exit:		None
 ; Assumes:	ES = VIDMEM
-; Destr:	BX, CX, SI
+; Destr:	BX, CX, DI
 ;-----------------------------------------
 
 HexPrint	proc
@@ -142,11 +166,11 @@ HexPrint	proc
 
 __Next:		dec cl
 
-		mov si, ax
-		shr si, cl
-		and si, 0fh		
+		mov di, ax
+		shr di, cl
+		and di, 0fh		
 
-		mov ch, cs:hex_code[si]
+		mov ch, cs:hex_code[di]
 		mov es:[bx], ch
 		mov byte ptr es:[bx+1], 4eh
 
@@ -191,7 +215,7 @@ __Next:		mov cl, cs:[si]
 
 
 hex_code 	db "0123456789ABCDEF"
-reg_names   	db "ax "
+reg_names   	db "ax bx cx dx si di "
 
 EOP:
 
