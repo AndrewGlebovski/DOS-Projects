@@ -22,8 +22,10 @@ REG_CNT equ 6		; Amount of registers to print
 FRAME_COLOR equ 0ch	; Frame color
 FONT_COLOR equ 0ch	; Text color
 
-FRAME_W equ 9		; Frame width
+FRAME_W equ 11		; Frame width
 FRAME_H equ REG_CNT + 2	; Frame height
+
+TEXT_OFFSET equ 2	; Text offset from frame outer border
 
 ;----------------------------------------
 ; Loads ES with video segment address
@@ -63,17 +65,15 @@ Start:  	xor bx, bx
         	mov ax, cs
         	mov es:[bx+2], ax
 
-		add bx, 4
-
 		; set int9 and save previous
-		mov ax, es:[bx]
+		mov ax, es:[bx+4]
         	mov OldInt9ofs, ax
-        	mov es:[bx], offset NewInt9
+        	mov es:[bx+4], offset NewInt9
 
-            	mov ax, es:[bx+2]
+            	mov ax, es:[bx+6]
         	mov OldInt9seg, ax
         	mov ax, cs
-        	mov es:[bx+2], ax
+        	mov es:[bx+6], ax
 
         	sti      ; enable int handle
 
@@ -136,7 +136,7 @@ __CallNewInt:	in al, 61h
 
 		; Restore vidmem on disabling
 		SetVIDMEM
-		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		mov si, (SCREEN_W * (Y - TEXT_OFFSET) + X - TEXT_OFFSET) * 2
 		mov di, offset SaveBuf
 		call LoadVidMem
 
@@ -255,13 +255,14 @@ __CallOldInt:	db 0eah
 		; Save stack start before pushing
 __CallNewInt:	push bp
 		mov bp, sp
+		sub bp, 2
 
 		; Save registers
 		push ax bx cx dx si di es
 
 		; Save buffer update
 		SetVIDMEM
-		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		mov si, (SCREEN_W * (Y - TEXT_OFFSET) + X - TEXT_OFFSET) * 2
 		call SaveBufUpdate
 
 		; Switch from vidmem to code segment 
@@ -277,7 +278,7 @@ __CallNewInt:	push bp
 		call FramePrt
 
 		; Set some addresses
-        	mov bx, (offset DrawBuf) + (FRAME_W + 1) * 2
+        	mov bx, (offset DrawBuf) + (FRAME_W + TEXT_OFFSET) * 2
             	mov si, offset RegNames
 
 		_MACROS_
@@ -290,7 +291,7 @@ __CallNewInt:	push bp
 
             	call HexPrint	; Print register value
 
-		add bp, 2			; Get next element in stack
+		sub bp, 2			; Get next element in stack
 		add bx, (FRAME_W - 7) * 2	; To new line
 
 		endm
@@ -299,7 +300,7 @@ __CallNewInt:	push bp
 
 		; Copy draw buffer to vidmem
 		SetVIDMEM
-		mov si, (SCREEN_W * (Y - 1) + X - 1) * 2
+		mov si, (SCREEN_W * (Y - TEXT_OFFSET) + X - TEXT_OFFSET) * 2
 		mov di, offset DrawBuf
 		call LoadVidMem
 
@@ -333,8 +334,13 @@ HexPrint	proc
 __Next:		dec cl
 
 		mov di, ax
+
 		shr di, cl
-		and di, 0fh		
+		shr di, cl
+		shr di, cl
+		shr di, cl
+
+		and di, 0fh
 
 		mov ch, cs:HexCode[di]
 		mov es:[bx], ch
