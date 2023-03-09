@@ -44,66 +44,70 @@ SetVIDMEM	macro
 
 ;----------------------------------------
 
-		; read input into buffer
+
+		; Read input into buffer
 Start:  	mov ah, 0ah
 		mov dx, offset Input
 		int 21h
 
-		; input size check
+		; Input size check
 		mov ch, Input[1]
 		mov cl, 08h
 
+		; Wrong length
 		cmp ch, cl
-		jb BadInput
+		jb __BadInput
 
-		; input and password comparsion
+		; Canary broken
+		cmp [Canary], 0BEEFh
+		jne __BadInput
+
+		; Input and password comparsion
 		mov si, offset Input + 2
-		mov di, offset Password
 		mov cx, 08h 
 
-		call StrCmp
+		call AccessCheck
 
-		cmp ax, 0
-		jne BadInput
+		; Print result
+		call ShowAccess
 
-		call YesAccess
-
-		; exit 0
+        	; Exit 0
         	mov ax, 4c00h
         	int 21h
 
-BadInput:	call NoAccess
+		; Set HasAccess to False
+__BadInput:	mov byte ptr [HasAccess], 0
 
-        	; exit 0
+		; Print result
+		call ShowAccess
+
+		; Exit 0
         	mov ax, 4c00h
         	int 21h
 
 
 ;----------------------------------------
-; Draws 'ACCESS GRANTED'
+; Draws 'ACCESS GRANTED' or 'ACCESS DENIED' based on HasAccess value
 ;----------------------------------------
 ; Entry:	None
 ; Exit:		None
 ; Destr:	AX, BX, CX, DX, SI, DI, ES
 ;----------------------------------------
 
-YesAccess	proc
+ShowAccess	proc
 
-		SetVIDMEM
+		cmp [HasAccess], 0
+		je __Fail
 
-		; Print green frame
-		mov bx, (SCREEN_W * FRAME_Y + FRAME_X) * 2
-		mov dl, FRAME_W
-		mov dh, FRAME_H
-		mov ch, 02h
-		mov di, offset FrameStyle
-		call FramePrt
+		mov si, offset Success
+		mov cx, 0202h
 
-		; Print text
-		mov bx, (SCREEN_W * (FRAME_Y + 2) + FRAME_X + 2) * 2
-            	mov si, offset Success
-		mov ch, 02h
-		call StrPrt
+		jmp __Draw
+
+__Fail:		mov si, offset Fail
+		mov cx, 0404h
+
+__Draw:		call TextInFrame
 
 		; Waiting for user to press escape
 __Next:		in al, 60h
@@ -118,14 +122,18 @@ __Next:		in al, 60h
 
 
 ;----------------------------------------
-; Draws 'ACCESS DENIED'
+; Print frame with text inside
 ;----------------------------------------
-; Entry:	None
+; Entry:	SI = text, CH = frame color, CL = text color
 ; Exit:		None
 ; Destr:	AX, BX, CX, DX, SI, DI, ES
 ;----------------------------------------
 
-NoAccess	proc
+TextInFrame	proc
+
+		; Save text offset and color
+		push si
+		push cx
 
 		SetVIDMEM
 
@@ -133,21 +141,17 @@ NoAccess	proc
 		mov bx, (SCREEN_W * FRAME_Y + FRAME_X) * 2
 		mov dl, FRAME_W
 		mov dh, FRAME_H
-		mov ch, 04h
 		mov di, offset FrameStyle
 		call FramePrt
 
+		; Restore text offset and color
+		pop cx
+		pop si
+
 		; Print text
 		mov bx, (SCREEN_W * (FRAME_Y + 2) + FRAME_X + 2) * 2
-            	mov si, offset Fail
-		mov ch, 04h
+		shl cx, 8
 		call StrPrt
-
-		; Waiting for user to press escape
-__Next:		in al, 60h
-
-		cmp al, 1
-		jne __Next
 
 		ret
 		endp
@@ -293,22 +297,34 @@ __Test:		cmp cl, '$'
 
 
 ;------------------------------------------
-; Compares two strings
+; Checks if string matches password
 ;------------------------------------------
-; Entry:	SI = first string, DI = second string, CX = size
+; Entry:	SI = string, CX = size
 ; Exit:		AX = 0 if string match, 1 otherwise 
 ; Destr:	AX, CX, SI, DI
 ;------------------------------------------
 
-StrCmp		proc
+AccessCheck	proc
+		; Set DI to 0
+		xor di, di	
+
+		; Check if string it's one string
+		cmp SI, offset Password
+		jne __Next
+
+		; No match in this case
+		mov byte ptr [HasAccess], 0
+		ret
 
 __Next:		mov al, [si]
-		mov ah, [di]
+		mov ah, Password[di]
 
 		cmp al, ah
 		je __Equal
 
-		mov ax, 1
+		; HasAccess to False
+		mov byte ptr [HasAccess], 0
+		
 		ret
 
 __Equal:	inc si
@@ -316,7 +332,8 @@ __Equal:	inc si
 
 		loop __Next
 
-		mov ax, 0
+		; Set HasAccess to True
+		mov byte ptr [HasAccess], 0ffh
 
 		ret
 		endp
@@ -326,8 +343,8 @@ __Equal:	inc si
 
 .data
 
-Input		db 14h, 10 dup(0)
-
+Input		db 16h, 10 dup(0)
+Canary		dw 0BEEFh
 Password	db "12345678", '$'
 
 Success		db "ACCESS GRANTED!", '$'
@@ -335,4 +352,7 @@ Fail		db "ACCESS DENIED!", '$'
 
 FrameStyle 	db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
 
+HasAccess	db 0
+
 end		Start
+
