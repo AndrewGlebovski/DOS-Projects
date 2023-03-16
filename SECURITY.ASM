@@ -23,6 +23,8 @@ FRAME_W equ 20		; Frame width
 FRAME_H equ 5		; Frame height
 
 
+; Password: 12345678, Hash: D9B1h
+
 ;----------------------------------------
 ; Loads ES with video segment address
 ;----------------------------------------
@@ -50,75 +52,37 @@ Start:  	mov ah, 0ah
 		mov dx, offset Input
 		int 21h
 
-		; Input size check
-		mov ch, Input[1]
-		mov cl, 08h
-
-		; Wrong length
-		cmp ch, cl
-		jb __BadInput
-
 		; Canary broken
 		cmp [Canary], 0BEEFh
-		jne __BadInput
-
-		; Input and password comparsion
+		jne BadInput
+		
+		; Input and password hash comparsion
 		mov si, offset Input + 2
-		mov cx, 08h 
+		mov cx, 08h
+		call GNUHash
 
-		call AccessCheck
+		cmp ax, [Password]
+		jne BadInput
 
 		; Print result
-		call ShowAccess
+		mov si, offset Success
+		mov cx, 0202h
+
+		call TextInFrame
 
         	; Exit 0
         	mov ax, 4c00h
         	int 21h
 
-		; Set HasAccess to False
-__BadInput:	mov byte ptr [HasAccess], 0
-
 		; Print result
-		call ShowAccess
+BadInput:	mov si, offset Fail
+		mov cx, 0404h
+
+		call TextInFrame
 
 		; Exit 0
         	mov ax, 4c00h
         	int 21h
-
-
-;----------------------------------------
-; Draws 'ACCESS GRANTED' or 'ACCESS DENIED' based on HasAccess value
-;----------------------------------------
-; Entry:	None
-; Exit:		None
-; Destr:	AX, BX, CX, DX, SI, DI, ES
-;----------------------------------------
-
-ShowAccess	proc
-
-		cmp [HasAccess], 0
-		je __Fail
-
-		mov si, offset Success
-		mov cx, 0202h
-
-		jmp __Draw
-
-__Fail:		mov si, offset Fail
-		mov cx, 0404h
-
-__Draw:		call TextInFrame
-
-		; Waiting for user to press escape
-__Next:		in al, 60h
-
-		cmp al, 1
-		jne __Next
-
-		ret
-		endp
-
-;----------------------------------------
 
 
 ;----------------------------------------
@@ -297,51 +261,6 @@ __Test:		cmp cl, '$'
 
 
 ;------------------------------------------
-; Checks if string matches password
-;------------------------------------------
-; Entry:	SI = string, CX = size
-; Exit:		AX = 0 if string match, 1 otherwise 
-; Destr:	AX, CX, SI, DI
-;------------------------------------------
-
-AccessCheck	proc
-		; Set DI to 0
-		xor di, di	
-
-		; Check if string it's one string
-		cmp SI, offset Password
-		jne __Next
-
-		; No match in this case
-		mov byte ptr [HasAccess], 0
-		ret
-
-__Next:		mov al, [si]
-		mov ah, Password[di]
-
-		cmp al, ah
-		je __Equal
-
-		; HasAccess to False
-		mov byte ptr [HasAccess], 0
-		
-		ret
-
-__Equal:	inc si
-		inc di
-
-		loop __Next
-
-		; Set HasAccess to True
-		mov byte ptr [HasAccess], 0ffh
-
-		ret
-		endp
-
-;------------------------------------------
-
-
-;------------------------------------------
 ; Calculates GNU hash sum
 ;------------------------------------------
 ; Entry:	SI = pointer, CX = size
@@ -370,16 +289,14 @@ __Next:		mul bx
 
 .data
 
-Input		db 16h, 10 dup(0)
+Input		db 16h, 0, 9 dup(0)	; Max length, Length, Buffer
 Canary		dw 0BEEFh
-Password	db "12345678", '$'
+Password	dw 0d9b1h
 
 Success		db "ACCESS GRANTED!", '$'
 Fail		db "ACCESS DENIED!", '$'
 
 FrameStyle 	db 0c4h, 0c4h, 0b3h, 0b3h, 0dah, 0bfh, 0c0h, 0d9h
-
-HasAccess	db 0
 
 end		Start
 
