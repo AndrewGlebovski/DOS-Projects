@@ -341,6 +341,33 @@ __Equal:	inc si
 ;------------------------------------------
 
 
+;------------------------------------------
+; Calculates GNU hash sum
+;------------------------------------------
+; Entry:	SI = pointer, CX = size
+; Exit:		AX = hash sum
+; Destr:	AX, BX, CX, DX, SI
+;------------------------------------------
+
+GNUHash		proc
+		
+		mov ax, 5381
+		mov bx, 33
+
+__Next:		mul bx
+		adc al, byte ptr [si]
+
+		inc si
+		xor dx, dx
+
+		loop __Next
+
+		ret
+		endp
+
+;------------------------------------------
+
+
 .data
 
 Input		db 16h, 10 dup(0)
