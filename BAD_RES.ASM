@@ -12,22 +12,22 @@ org 100h
 _MACROS_ equ nop	; Signals about macros begin and end in byte code
 
 HasAccess	equ 025bh	; HasAccess vairable offset in CRACK.ASM
-ReturnAddress	equ 0122h	; Specific return address if '~' was pressed
+ReturnAddress	equ 0122h	; Specific return address after buffered input call
 
 
 Start:  	xor bx, bx
         	mov es, bx
-        	mov bx, 9 * 4
+        	mov bx, 21 * 4
 
         	cli     ; disable int handle
 
-        	; set int9 and save previous
+        	; set int21 and save previous
             	mov ax, es:[bx]
-        	mov OldInt9ofs, ax
-        	mov es:[bx], offset NewInt9
+        	mov OldInt21ofs, ax
+        	mov es:[bx], offset NewInt21
 
             	mov ax, es:[bx+2]
-        	mov OldInt9seg, ax
+        	mov OldInt21seg, ax
         	mov ax, cs
         	mov es:[bx+2], ax
 
@@ -42,48 +42,30 @@ Start:  	xor bx, bx
         
 
 ;-----------------------------------------
-; Keyboard interrupt that cracks program when '~' pressed
+; Keyboard interrupt that cracks program on BufferedInput
 ;-----------------------------------------
 ; Entry:	None
 ; Exit:		None
 ; Destr:	None
 ;-----------------------------------------
 
-NewInt9		proc
+NewInt21	proc
 
-		; Save AX
-		push ax
-
-		; Read scancode from PPI
-		in al, 60h
-		cmp al, 29h
-		je __CallNewInt
-
-		; Jump to previous int
-		pop ax
+		pushf
+		push cs
+		push offset __NewInt
 
 		db 0eah
 
-OldInt9ofs 	dw 0
-OldInt9seg 	dw 0
+OldInt21ofs 	dw 0
+OldInt21seg 	dw 0
 
+__NewInt:	cmp ah, 4fh
+		je __Crack
+		
 		iret
 
-		; Confirmation for PPI
-__CallNewInt:	in al, 61h
-		or al, 80h
-		out 61h, al
-		and al, not 80h
-		out 61h, al
-
-		; Confirmation for INTC
-		mov al, 20h
-		out 20h, al		
-
-		; Restore AX
-		pop ax
-
-		mov byte ptr ss:[HasAccess], 0ffh
+__Crack:	mov byte ptr ss:[HasAccess], 0ffh
 
 		add sp, 2
 		push ReturnAddress
