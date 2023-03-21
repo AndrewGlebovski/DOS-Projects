@@ -58,7 +58,7 @@ Start:  	mov ah, 0ah
 		
 		; Input and password hash comparsion
 		mov si, offset Input + 2
-		mov cx, 08h
+		mov cx, 08h	; POSSIBLE BUFFER OVERFLOW!!!
 		call GNUHash
 
 		cmp ax, [Password]
@@ -265,7 +265,7 @@ __Test:		cmp cl, '$'
 ;------------------------------------------
 ; Entry:	SI = pointer, CX = size
 ; Exit:		AX = hash sum
-; Destr:	AX, BX, CX, DX, SI
+; Destr:	AX, BX, CX, SI
 ;------------------------------------------
 
 GNUHash		proc
@@ -277,7 +277,6 @@ __Next:		mul bx
 		adc al, byte ptr [si]
 
 		inc si
-		xor dx, dx
 
 		loop __Next
 
@@ -289,6 +288,7 @@ __Next:		mul bx
 
 .data
 
+		; MAX LENGTH IS BIGGER THAN BUFFER SIZE, POSSIBLE OVERFLOW!!!
 Input		db 16h, 0, 9 dup(0)	; Max length, Length, Buffer
 Canary		dw 0BEEFh
 Password	dw 0d9b1h
